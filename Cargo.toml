@@ -1,0 +1,23 @@
+[package]
+name = "ramp_gen"
+version = "0.1.0"
+edition = "2021"
+
+authors = ["Mincong Lu <mintlux667@gmail.com>"]
+license = "MIT OR Apache-2.0"
+
+readme = "README.md"
+repository = "https://github.com/mintlu8/ramp_gen"
+description = """
+Generate color ramps in rust and wgsl.
+"""
+keywords = ["ramp", "curve", "wgsl"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro-error = { version = "1.0.4", default-features = false }
+proc-macro2 = "1.0.92"
+quote = "1.0.37"
+
