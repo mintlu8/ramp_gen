@@ -21,3 +21,6 @@ proc-macro-error = { version = "1.0.4", default-features = false }
 proc-macro2 = "1.0.92"
 quote = "1.0.37"
 
+[dev-dependencies]
+glam = "0.29.2"
+

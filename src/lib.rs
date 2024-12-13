@@ -1,9 +1,9 @@
-/// Generate functions for rust and wgsl similar to blender's "Color Ramp" node.
+//! Generate functions for rust and wgsl similar to blender's "Color Ramp" node.
 
 use proc_macro2::{Group, Span, TokenStream, TokenTree};
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro_error::{abort, proc_macro_error};
-use quote::quote;
+use quote::{format_ident, quote};
 
 enum Curve {
     Linear,
@@ -75,11 +75,9 @@ fn parse_buf(
 
 /// Generate an expression that simulates the effect of the blender "Color Ramp" node.
 /// 
-/// The input is always `x`.
-/// 
 /// Syntax: `ramp!(attr1 attr2 [1.0, 2.0], [3.0, 4.0])`
 /// 
-/// By default we generate a linear rust expression.
+/// By default we generate a linear rust expression with variable `x`.
 /// 
 /// ```
 /// # use ramp_gen::ramp;
@@ -87,7 +85,7 @@ fn parse_buf(
 /// assert_eq!(f(1.5), 0.5);
 /// 
 /// // Use smoothstep to smooth the curve.
-/// let f2 = |x: f32| ramp!(ease [0.0, 0.0], [1.0, 1.0], [2.0, 0.0]);
+/// let f2 = |t: f32| ramp!(@t ease [0.0, 0.0], [1.0, 1.0], [2.0, 0.0]);
 /// assert!(f2(0.25) < 0.25);
 /// # assert!(f2(0.25) > 0.0);
 /// ```
@@ -96,9 +94,11 @@ fn parse_buf(
 /// 
 /// For rust, `x` must be a `f32`, while `y` can be a vector like `Vec2::new(1., 2.)`.
 /// 
-/// For wgsl, `x` is also allowed to be a vector.
+/// For wgsl, `x` is also allowed to be a vector like `vec2(1.0, 2.0)`.
 /// 
 /// # Attributes
+/// 
+/// * `@a`: Change the variable name from `x` to `a`.
 /// 
 /// * `clamp`: Clamp the input.
 /// 
@@ -123,19 +123,35 @@ fn ramp2(token_stream: TokenStream) -> TokenStream {
     let mut str = false;
     let mut clamp = false;
     let mut curve = Curve::Linear;
-    while let Some(TokenTree::Ident(ident)) = iter.peek() {
-        match ident.to_string().as_str() {
-            "wgsl" => wgsl = true,
-            "step" => curve = Curve::Steps,
-            "steps" => curve = Curve::Steps,
-            "ease" => curve = Curve::Ease,
-            "str" => str = true,
-            "clamp" => clamp = true,
-            unknown => return quote! {
-                #token_stream
-                compile_error!("Unknown attribute {}.", #unknown)
-            }
+    let mut x = format_ident!("x");
+    while let Some(tt) = iter.peek() {
+        match tt {
+            TokenTree::Punct(p) if p.as_char() == ',' => (),
+            TokenTree::Punct(p) if p.as_char() == '@' => {
+                let span = p.span();
+                let _ = iter.next();
+                match iter.next() {
+                    Some(TokenTree::Ident(ident)) => x = ident,
+                    Some(tt) => abort!(tt.span(), "Expected x variable."),
+                    None => abort!(span, "Expected x variable."),
+                }
+                continue;
+            },
+            TokenTree::Ident(ident) => match ident.to_string().as_str() {
+                "wgsl" => wgsl = true,
+                "step" => curve = Curve::Steps,
+                "steps" => curve = Curve::Steps,
+                "ease" => curve = Curve::Ease,
+                "str" => str = true,
+                "clamp" => clamp = true,
+                unknown => abort! {
+                    ident.span(),
+                    "Unknown attribute {}.", unknown
+                },
+            },
+            _ => break,
         }
+        
         let _ = iter.next();
     }
     let mut buffer = Vec::new();
@@ -152,11 +168,11 @@ fn ramp2(token_stream: TokenStream) -> TokenStream {
     let min = &buffer[0].0;
     let max = &buffer[buffer.len() - 1].0;
     let x = if !clamp || curve.clamped(){
-        quote!(x)
+        quote!(#x)
     } else if wgsl {
-        quote!(clamp(x, #min, #max))
+        quote!(clamp(#x, #min, #max))
     } else {
-        quote!(x.clamp(#min, #max))
+        quote!(#x.clamp(#min, #max))
     };
     let mut result = match curve {
         Curve::Linear => {
